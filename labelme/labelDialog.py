@@ -59,8 +59,8 @@ class LabelDialog(QtWidgets.QDialog):
             self.labelList.setDragDropMode(
                 QtGui.QAbstractItemView.InternalMove)
         self.labelList.currentItemChanged.connect(self.labelSelected)
-        self.edit.setListWidget(self.labelList)
-        layout.addWidget(self.labelList)
+        # self.edit.setListWidget(self.labelList) # we do not need other labels when we change this one
+        # layout.addWidget(self.labelList)
         self.setLayout(layout)
         # completion
         completer = QtWidgets.QCompleter()
@@ -100,6 +100,7 @@ class LabelDialog(QtWidgets.QDialog):
         if text is None:
             text = self.edit.text()
         self.edit.setText(text)
+        """
         self.edit.setSelection(0, len(text))
         items = self.labelList.findItems(text, QtCore.Qt.MatchFixedString)
         if items:
@@ -110,4 +111,5 @@ class LabelDialog(QtWidgets.QDialog):
         self.edit.setFocus(QtCore.Qt.PopupFocusReason)
         if move:
             self.move(QtGui.QCursor.pos())
+        """
         return self.edit.text() if self.exec_() else None

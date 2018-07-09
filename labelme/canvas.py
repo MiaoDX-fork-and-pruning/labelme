@@ -17,6 +17,7 @@ CURSOR_DRAW = QtCore.Qt.CrossCursor
 CURSOR_MOVE = QtCore.Qt.ClosedHandCursor
 CURSOR_GRAB = QtCore.Qt.OpenHandCursor
 
+QtCore.QPoint = QtCore.QPointF # we will use float points
 
 class Canvas(QtWidgets.QWidget):
 

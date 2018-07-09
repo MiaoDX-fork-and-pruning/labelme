@@ -33,6 +33,7 @@ from labelme.shape import Shape
 from labelme.toolBar import ToolBar
 from labelme.zoomWidget import ZoomWidget
 
+QtCore.QPoint = QtCore.QPointF # we will use float points
 
 # FIXME
 # - [medium] Set max zoom value to something big enough for FitWidth/Window
@@ -660,7 +661,16 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if not self.canvas.editing():
             return
         item = item if item else self.currentItem()
-        text = self.labelDialog.popUp(item.text())
+        # text = self.labelDialog.popUp(item.text())
+        text = item.text()
+
+        from labelme.change_attrs_with_gui.change_labelme_attr_with_gui_interface import load_change_labelme_attr_with_gui
+        change_labelme_attr_with_gui_class = load_change_labelme_attr_with_gui(self._config['change_labelme_attr_with_gui_file_path'])
+        # WE WILL CHANGE THE CUSTOM DATA HERE
+        change_labelme_attr_with_gui = change_labelme_attr_with_gui_class(self.labelFile)
+        label_, label_id_ = text.split('~')
+        change_labelme_attr_with_gui.GUI(int(label_id_)) # note the int
+
         if text is None:
             return
         if not self.validateLabel(text):
@@ -1341,6 +1351,12 @@ def main():
         help='keep annotation of previous frame',
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        '--change_labelme_attr_with_gui_file_path',
+        help='',
+        default=argparse.SUPPRESS,
+    )
+
     args = parser.parse_args()
 
     if args.version:
