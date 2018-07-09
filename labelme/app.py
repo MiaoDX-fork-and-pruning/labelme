@@ -792,7 +792,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 otherData=self.otherData,
                 flags=flags,
             )
-            self.labelFile = lf
+            # self.labelFile = lf # why save this?
             # disable allows next and previous image to proceed
             # self.filename = filename
             return True
