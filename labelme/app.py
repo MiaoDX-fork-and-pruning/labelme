@@ -270,6 +270,9 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         editMode = action('&Edit\nPolygons', self.setEditMode,
                           shortcuts['edit_polygon'], 'edit',
                           'Move and edit polygons', enabled=True)
+        editRectangleMode = action('&Edit\nRectangle', self.setEditRectangleMode,
+                          shortcuts['edit_rectangle'], 'edit',
+                          'Move and edit rectangle', enabled=True)
 
         delete = action('Delete\nPolygon', self.deleteSelectedShape,
                         shortcuts['delete_polygon'], 'cancel',
@@ -367,7 +370,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             undoLastPoint=undoLastPoint, undo=undo,
             addPoint=addPoint,
             createMode=createMode, editMode=editMode,
-            createRectangleMode=createRectangleMode,
+            createRectangleMode=createRectangleMode, editRectangleMode=editRectangleMode,
             shapeLineColor=shapeLineColor, shapeFillColor=shapeFillColor,
             zoom=zoom, zoomIn=zoomIn, zoomOut=zoomOut, zoomOrg=zoomOrg,
             fitWindow=fitWindow, fitWidth=fitWidth,
@@ -378,11 +381,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                       None, color1, color2),
             menu=(
                 createMode, createRectangleMode,
-                editMode, edit, copy,
+                editMode, editRectangleMode, edit, copy,
                 delete, shapeLineColor, shapeFillColor,
                 undo, undoLastPoint, addPoint,
             ),
-            onLoadActive=(close, createMode, createRectangleMode, editMode),
+            onLoadActive=(close, createMode, createRectangleMode, editMode, editRectangleMode),
             onShapesPresent=(saveAs, hideAll, showAll),
         )
 
@@ -426,6 +429,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             createMode,
             createRectangleMode,
             editMode,
+            editRectangleMode,
             copy,
             delete,
             undo,
@@ -514,6 +518,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             self.actions.createMode,
             self.actions.createRectangleMode,
             self.actions.editMode,
+            self.actions.editRectangleMode
         )
         addActions(self.menus.edit, actions + self.actions.editMenu)
 
@@ -597,12 +602,14 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         In the middle of drawing, toggling between modes should be disabled.
         """
         self.actions.editMode.setEnabled(not drawing)
+        self.actions.editRectangleMode.setEnabled(not drawing)
         self.actions.undoLastPoint.setEnabled(drawing)
         self.actions.undo.setEnabled(not drawing)
 
     def toggleDrawMode(self, edit=True, createMode='polygon'):
         self.canvas.setEditing(edit)
         self.canvas.createMode = createMode
+
         if createMode == 'polygon':
             self.actions.createMode.setEnabled(edit)
             self.actions.createRectangleMode.setEnabled(not edit)
@@ -612,6 +619,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         else:
             raise ValueError
         self.actions.editMode.setEnabled(not edit)
+        self.actions.editRectangleMode.setEnabled(not edit)
 
     def setCreateRectangleMode(self):
         self.toggleDrawMode(False, createMode='rectangle')
@@ -619,8 +627,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
     def setCreateMode(self):
         self.toggleDrawMode(False, createMode='polygon')
 
+    def setEditRectangleMode(self):
+        self.toggleDrawMode(True, createMode='rectangle')
+
     def setEditMode(self):
-        self.toggleDrawMode(True)
+        self.toggleDrawMode(True, createMode='polygon')
 
     def updateFileMenu(self):
         current = self.filename
@@ -661,16 +672,20 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if not self.canvas.editing():
             return
         item = item if item else self.currentItem()
-        # text = self.labelDialog.popUp(item.text())
-        text = item.text()
+        text = self.labelDialog.popUp(item.text())
+        # text = item.text()
 
-        from labelme.change_attrs_with_gui.change_labelme_attr_with_gui_interface import load_change_labelme_attr_with_gui
-        change_labelme_attr_with_gui_class = load_change_labelme_attr_with_gui(self._config['change_labelme_attr_with_gui_file_path'])
-        # WE WILL CHANGE THE CUSTOM DATA HERE
-        change_labelme_attr_with_gui = change_labelme_attr_with_gui_class(self.labelFile)
-        label_, label_id_ = text.split('~')
-        change_labelme_attr_with_gui.GUI(int(label_id_)) # note the int
-
+        try:
+            from labelme.change_attrs_with_gui.change_labelme_attr_with_gui_interface import load_change_labelme_attr_with_gui
+            change_labelme_attr_with_gui_class = load_change_labelme_attr_with_gui(self._config['change_labelme_attr_with_gui_file_path'])
+            # WE WILL CHANGE THE CUSTOM DATA HERE
+            change_labelme_attr_with_gui = change_labelme_attr_with_gui_class(self.labelFile)
+            label_, label_id_ = text.split('~')
+            change_labelme_attr_with_gui.GUI(int(label_id_)) # note the int
+        except Exception as e:
+            msg = QtWidgets.QMessageBox()
+            msg.setText("In load_change_labelme_attr_with_gui\n"+str(e))
+            msg.exec_()
         if text is None:
             return
         if not self.validateLabel(text):
@@ -844,6 +859,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         else:
             self.addLabel(self.canvas.setLastLabel(text))
             self.actions.editMode.setEnabled(True)
+            self.actions.editRectangleMode.setEnabled(True)
             self.actions.undoLastPoint.setEnabled(False)
             self.actions.undo.setEnabled(True)
             self.setDirty()
@@ -1394,6 +1410,7 @@ def main():
     app.setApplicationName(__appname__)
     app.setWindowIcon(newIcon('icon'))
     win = MainWindow(config=config, filename=filename, output=output)
+    win.setEditRectangleMode()
     win.show()
     win.raise_()
     sys.exit(app.exec_())

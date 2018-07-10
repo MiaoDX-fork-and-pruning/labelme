@@ -179,7 +179,7 @@ class Canvas(QtWidgets.QWidget):
                 self.repaint()
             return
 
-        # Polygon/Vertex moving.
+        # Polygon/Vertex/Rectangle moving.
         self.movingShape = False
         if QtCore.Qt.LeftButton & ev.buttons():
             if self.selectedVertex():
@@ -303,6 +303,10 @@ class Canvas(QtWidgets.QWidget):
                 self.repaint()
         elif ev.button() == QtCore.Qt.LeftButton and self.selectedShape:
             self.overrideCursor(CURSOR_GRAB)
+        # elif ev.button() == QtCore.Qt.LeftButton:
+        #     pos = self.transformPos(ev.pos())
+        #     if self.drawing():
+        #         self.handleDrawing(pos)
         if self.movingShape:
             self.storeShapes()
             self.shapeMoved.emit()
@@ -378,11 +382,40 @@ class Canvas(QtWidgets.QWidget):
         self.offsets = QtCore.QPoint(x1, y1), QtCore.QPoint(x2, y2)
 
     def boundedMoveVertex(self, pos):
+        if self.createMode == 'polygon':
+            self.boundedMoveVertex_poly(pos)
+        elif self.createMode == 'rectangle':
+            self.boundedMoveVertex_rect(pos)
+
+    def boundedMoveVertex_poly(self, pos):
         index, shape = self.hVertex, self.hShape
         point = shape[index]
         if self.outOfPixmap(pos):
             pos = self.intersectionPoint(point, pos)
         shape.moveVertexBy(index, pos - point)
+
+    # https://github.com/tzutalin/labelImg/blob/master/libs/canvas.py#L317
+    def boundedMoveVertex_rect(self, pos):
+        index, shape = self.hVertex, self.hShape
+        point = shape[index]
+        if self.outOfPixmap(pos):
+            pos = self.intersectionPoint(point, pos)
+
+        shiftPos = pos - point
+        shape.moveVertexBy(index, shiftPos)
+
+        lindex = (index + 1) % 4
+        rindex = (index + 3) % 4
+        lshift = None
+        rshift = None
+        if index % 2 == 0:
+            rshift = QtCore.QPoint(shiftPos.x(), 0)
+            lshift = QtCore.QPoint(0, shiftPos.y())
+        else:
+            lshift = QtCore.QPoint(shiftPos.x(), 0)
+            rshift = QtCore.QPoint(0, shiftPos.y())
+        shape.moveVertexBy(rindex, rshift)
+        shape.moveVertexBy(lindex, lshift)
 
     def boundedMoveShape(self, shape, pos):
         if self.outOfPixmap(pos):
