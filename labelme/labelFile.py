@@ -22,6 +22,7 @@ class LabelFile(object):
         if filename is not None:
             self.load(filename)
         self.filename = filename
+        self.verified = False
 
     def load(self, filename):
         keys = [
@@ -43,7 +44,7 @@ class LabelFile(object):
                                          data['imagePath'])
                 with open(imagePath, 'rb') as f:
                     imageData = f.read()
-            flags = data.get('flags')
+            flags = data.get('flags', dict())
             imagePath = data['imagePath']
             lineColor = data['lineColor']
             fillColor = data['fillColor']
@@ -98,3 +99,6 @@ class LabelFile(object):
     @staticmethod
     def isLabelFile(filename):
         return os.path.splitext(filename)[1].lower() == LabelFile.suffix
+
+    def toggleVerify(self):
+        self.verified = not self.verified

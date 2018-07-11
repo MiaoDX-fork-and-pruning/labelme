@@ -144,7 +144,16 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         )
 
         self.labelList = LabelQListWidget()
+
+        self.targetDirPath = '' # the target path of images
+        self.defaultSaveDir = None
+        save_dir = self._config['save_dir']
         self.lastOpenDir = None
+        if self.defaultSaveDir is None and save_dir is not None and os.path.exists(save_dir):
+            self.defaultSaveDir = save_dir
+            self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
+                                         (__appname__, self.defaultSaveDir))
+            self.statusBar().show()
 
         self.labelList.itemActivated.connect(self.labelSelectionChanged)
         self.labelList.itemSelectionChanged.connect(self.labelSelectionChanged)
@@ -241,11 +250,19 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                        'Open image or label file')
         opendir = action('&Open Dir', self.openDirDialog,
                          shortcuts['open_dir'], 'open', u'Open Dir')
+
+        changeSavedir = action('&Change Save Dir', self.changeSavedirDialog,
+                               'Ctrl+r', 'open', u'Change default saved Annotation dir')
+
         openNextImg = action('&Next Image', self.openNextImg,
                              shortcuts['open_next'], 'next', u'Open Next')
 
         openPrevImg = action('&Prev Image', self.openPrevImg,
                              shortcuts['open_prev'], 'prev', u'Open Prev')
+
+        verify = action('&Verify Image', self.verifyImg,
+                        'space', 'verify', u'Verify Image')
+
         save = action('&Save', self.saveFile, shortcuts['save'], 'save',
                       'Save labels to file', enabled=False)
         saveAs = action('&Save As', self.saveFileAs, shortcuts['save_as'],
@@ -400,7 +417,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             labelList=labelMenu,
         )
 
-        addActions(self.menus.file, (open_, opendir, self.menus.recentFiles,
+        addActions(self.menus.file, (open_, opendir, changeSavedir, self.menus.recentFiles,
                                      save, saveAs, close, None, quit))
         addActions(self.menus.help, (help,))
         addActions(self.menus.view, (
@@ -422,8 +439,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.actions.tool = (
             open_,
             opendir,
+            changeSavedir,
             openNextImg,
             openPrevImg,
+            verify,
             save,
             None,
             createMode,
@@ -524,10 +543,14 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
     def setDirty(self):
         if self._config['auto_save']:
-            label_file = os.path.splitext(self.imagePath)[0] + '.json'
+            # label_file = os.path.splitext(self.imagePath)[0] + '.json'
+            basename = os.path.basename(
+                os.path.splitext(self.imagePath)[0])
+            label_file = os.path.join(self.defaultSaveDir, basename + '.json')
             self.saveLabels(label_file)
             return
         self.dirty = True
+        self.canvas.verified = False    # reset verified
         self.actions.save.setEnabled(True)
         self.actions.undo.setEnabled(self.canvas.isShapeRestorable)
         title = __appname__
@@ -793,9 +816,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             key = item.text()
             flag = item.checkState() == Qt.Checked
             flags[key] = flag
+        flags['verified'] = self.canvas.verified
         try:
-            imagePath = os.path.relpath(
-                self.imagePath, os.path.dirname(filename))
+            # imagePath = os.path.relpath(
+            #     self.imagePath, os.path.dirname(filename))
+            imagePath = self.imagePath
             imageData = self.imageData if self._config['store_data'] else None
             lf.save(
                 filename=filename,
@@ -807,7 +832,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 otherData=self.otherData,
                 flags=flags,
             )
-            # self.labelFile = lf # why save this?
+            if self.labelFile == None:
+                self.labelFile = lf #note here, when we already load it from file, this will throw otherData, so, do not do this
             # disable allows next and previous image to proceed
             # self.filename = filename
             return True
@@ -933,6 +959,12 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         # assumes same name, but json extension
         self.status("Loading %s..." % os.path.basename(str(filename)))
         label_file = os.path.splitext(filename)[0] + '.json'
+
+        if self.defaultSaveDir is not None:
+            basename = os.path.basename(
+                os.path.splitext(filename)[0])
+            label_file = os.path.join(self.defaultSaveDir, basename + '.json')
+
         if QtCore.QFile.exists(label_file) and \
                 LabelFile.isLabelFile(label_file):
             try:
@@ -954,19 +986,23 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 self.status("Error reading %s" % label_file)
                 return False
             self.imageData = self.labelFile.imageData
-            self.imagePath = os.path.join(os.path.dirname(label_file),
-                                          self.labelFile.imagePath)
+            # self.imagePath = os.path.join(os.path.dirname(label_file),
+            #                               self.labelFile.imagePath)
+            # self.imagePath = os.path.abspath(self.labelFile.imagePath)
+            self.imagePath = self.labelFile.imagePath
             self.lineColor = QtGui.QColor(*self.labelFile.lineColor)
             self.fillColor = QtGui.QColor(*self.labelFile.fillColor)
             self.otherData = self.labelFile.otherData
+            self.canvas.verified = self.labelFile.flags.get("verified", False)
         else:
             # Load image:
             # read data first and store for saving into label file.
             self.imageData = read(filename, None)
             if self.imageData is not None:
                 # the filename is image not JSON
-                self.imagePath = filename
+                self.imagePath = os.path.abspath(filename)  # save with the absolute path
             self.labelFile = None
+            self.canvas.verified = False
         image = QtGui.QImage.fromData(self.imageData)
         if image.isNull():
             formats = ['*.{}'.format(fmt.data().decode())
@@ -1053,6 +1089,24 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if self.mayContinue():
             self.loadFile(filename)
 
+    def verifyImg(self, _value=False):
+        # Proceding next image without dialog if having any label
+         if self.filename is not None:
+            try:
+                self.labelFile.toggleVerify()
+            except AttributeError:
+                # If the labelling file does not exist yet, create if and
+                # re-save it with the verified attribute.
+                self.saveFile(_force=True) # will always save file, even we has no label (if the user really think it is okay to have no label, then just save)
+                if self.labelFile != None:
+                    self.labelFile.toggleVerify()
+                else:
+                    return
+
+            self.canvas.verified = self.labelFile.verified
+            self.paintCanvas()
+            self.saveFile(_force=True)
+
     def openPrevImg(self, _value=False):
         if not self.mayContinue():
             return
@@ -1068,6 +1122,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             filename = self.imageList[currIndex - 1]
             if filename:
                 self.loadFile(filename)
+        else:
+            self.errorMessage('Reach first image',
+                              'This is already the first image!')
+            return
 
     def openNextImg(self, _value=False, load=True):
         if not self.mayContinue():
@@ -1080,9 +1138,14 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if self.filename is None:
             filename = self.imageList[0]
         else:
+            filename = str(os.path.abspath(filename))
             currIndex = self.imageList.index(self.filename)
             if currIndex + 1 < len(self.imageList):
                 filename = self.imageList[currIndex + 1]
+            else:
+                self.errorMessage('Reach last image',
+                                  'This is already the last image!')
+                return
         self.filename = filename
 
         if self.filename and load:
@@ -1105,14 +1168,23 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if filename:
             self.loadFile(filename)
 
-    def saveFile(self, _value=False):
+    def saveFile(self, _force=False):
         assert not self.image.isNull(), "cannot save empty image"
-        if self._config['flags'] or self.hasLabels():
+        if self._config['flags'] or self.hasLabels() or _force:
             if self.labelFile:
                 # DL20180323 - overwrite when in directory
                 self._saveFile(self.labelFile.filename)
-            elif self.output:
+                return
+            if self.output:
                 self._saveFile(self.output)
+                return
+
+            if self.defaultSaveDir is not None and len(self.defaultSaveDir):
+                if self.filename:
+                    file_basename = os.path.basename(self.filename)
+                    saved_filename_no_ext = os.path.splitext(file_basename)[0]+'.json'
+                    saved_path = os.path.join(self.defaultSaveDir, saved_filename_no_ext)
+                    self._saveFile(saved_path)
             else:
                 self._saveFile(self.saveFileDialog())
 
@@ -1146,6 +1218,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             self.setClean()
             if self.labeling_once:
                 self.close()
+            self.statusBar().showMessage('Saved to  %s' % filename)
+            self.statusBar().show()
 
     def closeFile(self, _value=False):
         if not self.mayContinue():
@@ -1185,6 +1259,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
     def errorMessage(self, title, message):
         return QtWidgets.QMessageBox.critical(
+            self, title, '<p><b>%s</b></p>%s' % (title, message))
+
+    def warnMessage(self, title, message):
+        return QtWidgets.QMessageBox.warning(
             self, title, '<p><b>%s</b></p>%s' % (title, message))
 
     def currentPath(self):
@@ -1246,6 +1324,23 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.canvas.endMove(copy=False)
         self.setDirty()
 
+    def changeSavedirDialog(self, _value=False):
+        if self.defaultSaveDir is not None:
+            path = self.defaultSaveDir
+        else:
+            path = '.'
+
+        dirpath = QtWidgets.QFileDialog.getExistingDirectory(self,
+                                                       '%s - Save annotations to the directory' % __appname__, path,  QtWidgets.QFileDialog.ShowDirsOnly
+                                                       | QtWidgets.QFileDialog.DontResolveSymlinks)
+
+        if dirpath is not None and len(dirpath) > 1:
+            self.defaultSaveDir = dirpath
+
+        self.statusBar().showMessage('%s . Annotation will be saved to %s' %
+                                     ('Change saved folder', self.defaultSaveDir))
+        self.statusBar().show()
+
     def openDirDialog(self, _value=False, dirpath=None):
         if not self.mayContinue():
             return
@@ -1257,11 +1352,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             defaultOpenDirPath = os.path.dirname(self.filename) \
                 if self.filename else '.'
 
-        targetDirPath = str(QtWidgets.QFileDialog.getExistingDirectory(
+        self.targetDirPath = str(QtWidgets.QFileDialog.getExistingDirectory(
             self, '%s - Open Directory' % __appname__, defaultOpenDirPath,
             QtWidgets.QFileDialog.ShowDirsOnly |
             QtWidgets.QFileDialog.DontResolveSymlinks))
-        self.importDirImages(targetDirPath)
+        self.importDirImages(self.targetDirPath)
 
     @property
     def imageList(self):
@@ -1278,7 +1373,36 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.lastOpenDir = dirpath
         self.filename = None
         self.fileListWidget.clear()
-        for imgPath in self.scanAllImages(dirpath):
+
+        allImagesInDir = self.scanAllImages(dirpath)
+        allJsonLabelsInDir = self.scanAllJsonLables(dirpath)
+
+
+        if len(allImagesInDir) == 0 and len(allJsonLabelsInDir) == 0:
+            self.warnMessage('No images or labels found',
+                              "")
+            return
+        if len(allImagesInDir) > 0 and len(allJsonLabelsInDir) > 0:
+            self.errorMessage('Both images or labels found',
+                             "We do not allow images and labels being in same directory, put them in different places please")
+            return
+
+        if len(allImagesInDir) > 0 and len(allJsonLabelsInDir) == 0:
+            self.warnMessage('Use images',
+                             "Note you are using images only, and no json files are in the chosen directory (which is good)")
+
+        if len(allImagesInDir) == 0 and len(allJsonLabelsInDir) > 0:
+            allImagesInDir = []
+            for json_f in allJsonLabelsInDir:
+                self.loadFile(json_f)
+                imagePath = os.path.abspath(self.labelFile.imagePath)
+                allImagesInDir.append(str(imagePath))
+            self.resetState()
+            self.defaultSaveDir = dirpath
+            self.warnMessage('Use labels',
+                              "Note you are using labels only, and no images are in the chosen directory")
+
+        for imgPath in allImagesInDir:
             item = QtWidgets.QListWidgetItem(imgPath)
             self.fileListWidget.addItem(item)
         self.openNextImg(load=load)
@@ -1295,6 +1419,18 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                     images.append(relativePath)
         images.sort(key=lambda x: x.lower())
         return images
+
+    def scanAllJsonLables(self, folderPath):
+        extensions = ['.json']
+        json_files = []
+
+        for root, dirs, files in os.walk(folderPath):
+            for file in files:
+                if file.lower().endswith(tuple(extensions)):
+                    relativePath = os.path.join(root, file)
+                    json_files.append(relativePath)
+        json_files.sort(key=lambda x: x.lower())
+        return json_files
 
 
 def inverted(color):

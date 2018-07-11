@@ -70,6 +70,8 @@ class Canvas(QtWidgets.QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(QtCore.Qt.WheelFocus)
 
+        self.verified = False
+
     def storeShapes(self):
         shapesBackup = []
         for shape in self.shapes:
@@ -502,6 +504,16 @@ class Canvas(QtWidgets.QWidget):
             self.line.paint(p)
         if self.selectedShapeCopy:
             self.selectedShapeCopy.paint(p)
+
+        self.setAutoFillBackground(True)
+        if self.verified:
+            pal = self.palette()
+            pal.setColor(self.backgroundRole(), QtGui.QColor(184, 239, 38, 128))
+            self.setPalette(pal)
+        else:
+            pal = self.palette()
+            pal.setColor(self.backgroundRole(), QtGui.QColor(232, 232, 232, 255))
+            self.setPalette(pal)
 
         p.end()
 

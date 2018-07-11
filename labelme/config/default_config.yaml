@@ -8,8 +8,9 @@ sort_labels: true
 validate_label: null
 show_label_text_field: true
 
-#change_labelme_attr_with_gui_file_path: "D:/ws/projects/hobot_program/label_tool/refine_gt/bridge/change_labelme_attr_with_gui_hobot_example.py"
-change_labelme_attr_with_gui_file_path: ""
+change_labelme_attr_with_gui_file_path: "D:/ws/projects/hobot_program/label_tool/refine_gt/bridge/change_labelme_attr_with_gui_hobot_example.py"
+#change_labelme_attr_with_gui_file_path: ""
+save_dir: null
 
 shortcuts:
   close: Ctrl+W
