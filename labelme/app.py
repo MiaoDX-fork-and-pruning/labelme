@@ -149,11 +149,12 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.defaultSaveDir = None
         save_dir = self._config['save_dir']
         self.lastOpenDir = None
-        if self.defaultSaveDir is None and save_dir is not None and os.path.exists(save_dir):
+        if save_dir is not None and os.path.exists(save_dir):
             self.defaultSaveDir = save_dir
             self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
                                          (__appname__, self.defaultSaveDir))
             self.statusBar().show()
+
 
         self.labelList.itemActivated.connect(self.labelSelectionChanged)
         self.labelList.itemSelectionChanged.connect(self.labelSelectionChanged)
@@ -517,6 +518,12 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
         self.populateModeActions()
 
+
+        image_dir = self._config['image_dir']
+        if image_dir is not None:
+            self.openDirDialog(dirpath=image_dir, _value=True)
+        elif image_dir is None and save_dir is not None:
+            self.openDirDialog(dirpath=save_dir, _value=True)
         # self.firstStart = True
         # if self.firstStart:
         #    QWhatsThis.enterWhatsThisMode()
@@ -874,6 +881,15 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if items:
             text = items[0].text()
         text = self.labelDialog.popUp(text)
+
+        try:
+            label_, label_id_ = text.split('~')
+        except Exception as e:
+            msg = QtWidgets.QMessageBox()
+            msg.setText("In newShape, the label should have format LABELNAME~ID")
+            msg.exec_()
+            text = None
+
         if text is not None and not self.validateLabel(text):
             self.errorMessage('Invalid label',
                               "Invalid label '{}' with validation type '{}'"
@@ -1345,6 +1361,12 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if not self.mayContinue():
             return
 
+        if _value == True:
+            assert os.path.exists(dirpath)
+            self.targetDirPath = dirpath
+            self.importDirImages(self.targetDirPath)
+            return 
+
         defaultOpenDirPath = dirpath if dirpath else '.'
         if self.lastOpenDir and os.path.exists(self.lastOpenDir):
             defaultOpenDirPath = self.lastOpenDir
@@ -1505,10 +1527,19 @@ def main():
     )
     parser.add_argument(
         '--change_labelme_attr_with_gui_file_path',
-        help='',
+        help='The implement of change lablem attr with gui file',
         default=argparse.SUPPRESS,
     )
-
+    parser.add_argument(
+        '--image_dir',
+        help='The image directory, you can use with the save_dir, or use as one fresh start',
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        '--save_dir',
+        help='The saving directory of labelme files (use with iamge_dir) or you can just load with these files (no need to specify the image dir manually)',
+        default=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
 
     if args.version:
