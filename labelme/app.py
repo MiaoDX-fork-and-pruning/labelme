@@ -181,7 +181,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if config['flags']:
             self.loadFlags({k: False for k in config['flags']})
         self.flag_dock.setWidget(self.flag_widget)
-        self.flag_widget.itemChanged.connect(self.setDirty)
+        # self.flag_widget.itemChanged.connect(self.setDirty)
+        self.flag_widget.itemChanged.connect(self.flag_item_changed)
 
         self.uniqLabelList = EscapableQListWidget()
         self.uniqLabelList.setToolTip(
@@ -548,6 +549,41 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         )
         addActions(self.menus.edit, actions + self.actions.editMenu)
 
+    """
+    import enum
+    class BBOX_SHOW_TYPE(enum.IntEnum):
+        SHOW_TYPE_TP = 0
+        SHOW_TYPE_FN = 1
+        SHOW_TYPE_FP = 2
+        SHOW_TYPE_IGNORE = 3
+    """
+    def flag_item_changed(self):
+
+        allowed_types = []  #["SHOW_TYPE_FN", "SHOW_TYPE_FP"]  # we will set this later
+
+        flags = self.load_current_flag()
+        for flag, v in flags.items():
+            if v == True:
+                allowed_types.append(flag)
+
+        for shape in self.canvas.shapes:
+            text = shape.label
+            try:
+                label_, label_id_ = text.split('~')
+            except Exception as e:
+                continue
+
+            custom_data = self.labelFile.otherData.get('custom_data', dict())
+            id_type_pair = custom_data.get('id_type_pair', dict())
+            type_s = id_type_pair.get(str(label_id_), None)
+            if type_s is None or type_s not in allowed_types:
+                self.canvas.setShapeVisible(shape, False)
+            else:
+                self.canvas.setShapeVisible(shape, True) # if in any reason, the type_s can not be fetched, we will show it
+
+        self.setDirty()
+
+
     def setDirty(self):
         if self._config['auto_save']:
             # label_file = os.path.splitext(self.imagePath)[0] + '.json'
@@ -805,6 +841,15 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             item.setCheckState(Qt.Checked if flag else Qt.Unchecked)
             self.flag_widget.addItem(item)
 
+    def load_current_flag(self):
+        flags = {}
+        for i in range(self.flag_widget.count()):
+            item = self.flag_widget.item(i)
+            key = item.text()
+            flag = item.checkState() == Qt.Checked
+            flags[key] = flag
+        return flags
+
     def saveLabels(self, filename):
         lf = LabelFile()
 
@@ -817,12 +862,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                         points=[(p.x(), p.y()) for p in s.points])
 
         shapes = [format_shape(shape) for shape in self.labelList.shapes]
-        flags = {}
-        for i in range(self.flag_widget.count()):
-            item = self.flag_widget.item(i)
-            key = item.text()
-            flag = item.checkState() == Qt.Checked
-            flags[key] = flag
+        flags = self.load_current_flag()
         flags['verified'] = self.canvas.verified
         try:
             # imagePath = os.path.relpath(
