@@ -31,10 +31,10 @@ class Shape(object):
     vertex_fill_color = DEFAULT_VERTEX_FILL_COLOR
     hvertex_fill_color = DEFAULT_HVERTEX_FILL_COLOR
     point_type = P_ROUND
-    point_size = 8
+    point_size = 4  # make it small to show more
     scale = 1.0
 
-    def __init__(self, label=None, line_color=None):
+    def __init__(self, label=None, line_color=None, editable=True):
         self.label = label
         self.points = []
         self.fill = False
@@ -54,6 +54,9 @@ class Shape(object):
             # with an object attribute. Currently this
             # is used for drawing the pending line a different color.
             self.line_color = line_color
+
+        self.init_editable = editable
+        self.editable = editable
 
     def close(self):
         if len(self.points) <= 2:
@@ -114,6 +117,8 @@ class Shape(object):
                 painter.fillPath(line_path, color)
 
     def drawVertex(self, path, i):
+        if not self.editable:
+            return
         d = self.point_size / self.scale
         shape = self.point_type
         point = self.points[i]
@@ -165,9 +170,13 @@ class Shape(object):
         return self.makePath().boundingRect()
 
     def moveBy(self, offset):
+        if not self.editable:
+            return
         self.points = [p + offset for p in self.points]
 
     def moveVertexBy(self, i, offset):
+        if not self.editable:
+            return
         self.points[i] = self.points[i] + offset
 
     def highlightVertex(self, i, action):
@@ -178,7 +187,7 @@ class Shape(object):
         self._highlightIndex = None
 
     def copy(self):
-        shape = Shape(self.label)
+        shape = Shape(self.label, editable=True) # new shape can be changed
         shape.points = [p for p in self.points]
         shape.fill = self.fill
         shape.selected = self.selected
@@ -188,6 +197,9 @@ class Shape(object):
         if self.fill_color != Shape.fill_color:
             shape.fill_color = self.fill_color
         return shape
+
+    def restore_editable(self):
+        self.editable = self.init_editable
 
     def __len__(self):
         return len(self.points)

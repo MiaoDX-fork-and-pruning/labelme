@@ -149,6 +149,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.defaultSaveDir = None
         save_dir = self._config['save_dir']
         self.lastOpenDir = None
+        self.sort_type_and_flag_backup = None
+        self.image_path_stats_dict_list_backup = dict()
+        self.image_path_list_last = list()
+
         if save_dir is not None and os.path.exists(save_dir):
             self.defaultSaveDir = save_dir
             self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
@@ -183,6 +187,17 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.flag_dock.setWidget(self.flag_widget)
         # self.flag_widget.itemChanged.connect(self.setDirty)
         self.flag_widget.itemChanged.connect(self.flag_item_changed)
+
+
+        self.sort_file_dock = self.sort_file_widget = None
+        self.sort_file_dock = QtWidgets.QDockWidget('Sort Flags', self)
+        self.sort_file_dock.setObjectName('Sort Flags')
+        self.sort_file_widget = QtWidgets.QListWidget()
+        if config['sort_files_choices']:
+            self.loadSortFlags({k: False for k in config['sort_files_choices']})
+        self.sort_file_dock.setWidget(self.sort_file_widget)
+        # self.flag_widget.itemChanged.connect(self.setDirty)
+        self.sort_file_widget.itemChanged.connect(self.sort_type_flag_item_changed)
 
         self.uniqLabelList = EscapableQListWidget()
         self.uniqLabelList.setToolTip(
@@ -233,6 +248,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
         self.setCentralWidget(scrollArea)
 
+        self.addDockWidget(Qt.RightDockWidgetArea, self.sort_file_dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.flag_dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.labelsdock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
@@ -254,7 +270,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                          shortcuts['open_dir'], 'open', u'Open Dir')
 
         changeSavedir = action('&Change Save Dir', self.changeSavedirDialog,
-                               'Ctrl+r', 'open', u'Change default saved Annotation dir')
+                               shortcuts['change_save_dir'], 'open', u'Change default saved Annotation dir')
 
         openNextImg = action('&Next Image', self.openNextImg,
                              shortcuts['open_next'], 'next', u'Open Next')
@@ -549,22 +565,16 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         )
         addActions(self.menus.edit, actions + self.actions.editMenu)
 
-    """
-    import enum
-    class BBOX_SHOW_TYPE(enum.IntEnum):
-        SHOW_TYPE_TP = 0
-        SHOW_TYPE_FN = 1
-        SHOW_TYPE_FP = 2
-        SHOW_TYPE_IGNORE = 3
-    """
     def flag_item_changed(self):
+        flags = self.load_current_flag(self.flag_widget)
+        self.show_type_flag_item_changed(flags)
 
-        allowed_types = []  #["SHOW_TYPE_FN", "SHOW_TYPE_FP"]  # we will set this later
+    def show_type_flag_item_changed(self, flags):
+        not_allowed_types = []
 
-        flags = self.load_current_flag()
         for flag, v in flags.items():
-            if v == True:
-                allowed_types.append(flag)
+            if v == False:
+                not_allowed_types.append(flag)
 
         for shape in self.canvas.shapes:
             text = shape.label
@@ -576,13 +586,38 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             custom_data = self.labelFile.otherData.get('custom_data', dict())
             id_type_pair = custom_data.get('id_type_pair', dict())
             type_s = id_type_pair.get(str(label_id_), None)
-            if type_s is None or type_s not in allowed_types:
-                self.canvas.setShapeVisible(shape, False)
+            if type_s is None or type_s not in not_allowed_types:
+                self.canvas.setShapeVisible(shape, True)
+                self.togglePolygons_type(value=True, shape_chosen=shape)
             else:
-                self.canvas.setShapeVisible(shape, True) # if in any reason, the type_s can not be fetched, we will show it
+                self.canvas.setShapeVisible(shape, False)
+                self.togglePolygons_type(value=False, shape_chosen=shape)
 
         self.setDirty()
 
+    def sort_type_flag_item_changed(self):
+
+        sort_type_and_flag = self.load_current_flag(self.sort_file_widget)
+
+        if len(self.image_path_list_last) == 0 and len(self.image_path_stats_dict_list_backup) == 0: # there is no more than two images
+            return
+
+        image_path_list = list(self.image_path_stats_dict_list_backup)  # init
+
+        if self.sort_type_and_flag_backup!=sort_type_and_flag:
+            reversed_sort = sort_type_and_flag.pop('reversed_sort')
+            for sort_type, sort_flag in sort_type_and_flag.items():
+                if sort_flag:
+                    image_path_list = self.change_image_path_list_order(order_by_type=sort_type)
+
+            if reversed_sort:
+                image_path_list = image_path_list[::-1]
+
+        if image_path_list != self.image_path_list_last:
+            self.import_changed_image_path_list(image_path_list)
+
+        self.sort_type_and_flag_backup = sort_type_and_flag.copy()
+        self.image_path_list_last = image_path_list.copy()
 
     def setDirty(self):
         if self._config['auto_save']:
@@ -737,6 +772,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
     def editLabel(self, item=None):
         if not self.canvas.editing():
             return
+
+        if not self.confirmMessage("Editlabel", "Are you really want to edit the label?"):
+            return
+
         item = item if item else self.currentItem()
         text = self.labelDialog.popUp(item.text())
         # text = item.text()
@@ -822,7 +861,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
     def loadLabels(self, shapes):
         s = []
         for label, points, line_color, fill_color in shapes:
-            shape = Shape(label=label)
+            shape = Shape(label=label, editable=self._config['shape_editable_default'])
             for x, y in points:
                 shape.addPoint(QtCore.QPoint(x, y))
             shape.close()
@@ -834,17 +873,31 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.loadShapes(s)
 
     def loadFlags(self, flags):
+        if "verified" in flags:
+            flags.pop("verified") # do not show verified
         self.flag_widget.clear()
         for key, flag in flags.items():
             item = QtWidgets.QListWidgetItem(key)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked if flag else Qt.Unchecked)
             self.flag_widget.addItem(item)
+        self.flag_item_changed() # after load flag, show properly
 
-    def load_current_flag(self):
+    def loadSortFlags(self, flags):
+        self.sort_file_widget.clear()
+        for key, flag in flags.items():
+            item = QtWidgets.QListWidgetItem(key)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if flag else Qt.Unchecked)
+            self.sort_file_widget.addItem(item)
+        self.sort_type_flag_item_changed() # after load flag, show properly
+
+    def load_current_flag(self, flag_widget_chosen=None):
+        if flag_widget_chosen is None:
+            flag_widget_chosen = self.flag_widget
         flags = {}
-        for i in range(self.flag_widget.count()):
-            item = self.flag_widget.item(i)
+        for i in range(flag_widget_chosen.count()):
+            item = flag_widget_chosen.item(i)
             key = item.text()
             flag = item.checkState() == Qt.Checked
             flags[key] = flag
@@ -862,7 +915,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                         points=[(p.x(), p.y()) for p in s.points])
 
         shapes = [format_shape(shape) for shape in self.labelList.shapes]
-        flags = self.load_current_flag()
+        for shape in self.labelList.shapes:
+            shape.restore_editable()
+
+        flags = self.load_current_flag(self.flag_widget)
         flags['verified'] = self.canvas.verified
         try:
             # imagePath = os.path.relpath(
@@ -924,9 +980,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
         try:
             label_, label_id_ = text.split('~')
+            assert int(label_id_) > 100000
         except Exception as e:
             msg = QtWidgets.QMessageBox()
-            msg.setText("In newShape, the label should have format LABELNAME~ID")
+            msg.setText("In newShape, the label should have format LABELNAME~ID, and to make sure the id won't be same as existing ones, make it larger than 10000 please")
             msg.exec_()
             text = None
 
@@ -993,6 +1050,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
     def togglePolygons(self, value):
         for item, shape in self.labelList.itemsToShapes:
             item.setCheckState(Qt.Checked if value else Qt.Unchecked)
+
+    def togglePolygons_type(self, value, shape_chosen):
+        for item, shape in self.labelList.itemsToShapes:
+            if shape == shape_chosen:
+                item.setCheckState(Qt.Checked if value else Qt.Unchecked)
 
     def loadFile(self, filename=None):
         """Load the specified file, or the last opened file if None."""
@@ -1321,6 +1383,16 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         return QtWidgets.QMessageBox.warning(
             self, title, '<p><b>%s</b></p>%s' % (title, message))
 
+    def confirmMessage(self, title, message):
+        rtn = QtWidgets.QMessageBox.information(self,
+                                                title,
+                                                message,
+                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if rtn == QtWidgets.QMessageBox.Yes:
+            return True
+        else:
+            return False
+
     def currentPath(self):
         return os.path.dirname(str(self.filename)) if self.filename else '.'
 
@@ -1428,6 +1500,32 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             lst.append(item.text())
         return lst
 
+    def _custom_key(self, d, key_s='A'):
+        return d[1].get(key_s, 0.0)
+
+    def change_image_path_list_order(self, order_by_type='SHOW_TYPE_TP'):
+
+        d_s = sorted(self.image_path_stats_dict_list_backup.items(), key=lambda x: self._custom_key(x, key_s=order_by_type))
+        # print(d_s)
+        image_path_list = [x[0] for x in d_s]
+        # print(image_path_list)
+
+        return image_path_list
+
+    def import_changed_image_path_list(self, image_path_list, load=True):
+
+        if len(image_path_list) == 0:
+            return
+
+        self.filename = None
+        self.fileListWidget.clear()
+
+        for imgPath in image_path_list:
+            item = QtWidgets.QListWidgetItem(imgPath)
+            self.fileListWidget.addItem(item)
+        self.openNextImg(load=load)
+
+
     def importDirImages(self, dirpath, load=True):
         if not self.mayContinue() or not dirpath:
             return
@@ -1435,6 +1533,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.lastOpenDir = dirpath
         self.filename = None
         self.fileListWidget.clear()
+        self.image_path_stats_dict_list_backup = dict()
+        self.image_path_list_last = list()
 
         allImagesInDir = self.scanAllImages(dirpath)
         allJsonLabelsInDir = self.scanAllJsonLables(dirpath)
@@ -1459,6 +1559,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 self.loadFile(json_f)
                 imagePath = os.path.abspath(self.labelFile.imagePath)
                 allImagesInDir.append(str(imagePath))
+                self.image_path_list_last.append(imagePath)
+                self.image_path_stats_dict_list_backup[imagePath] = self.labelFile.otherData.get('custom_data', dict()).get('area_stats', dict())
             self.resetState()
             self.defaultSaveDir = dirpath
             self.warnMessage('Use labels',
@@ -1580,6 +1682,12 @@ def main():
         help='The saving directory of labelme files (use with iamge_dir) or you can just load with these files (no need to specify the image dir manually)',
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        '--shape_editable_default',
+        action='store_true',
+        help='Whether the shape is editable or not by default',
+        default=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
 
     if args.version:
@@ -1617,7 +1725,10 @@ def main():
     app.setApplicationName(__appname__)
     app.setWindowIcon(newIcon('icon'))
     win = MainWindow(config=config, filename=filename, output=output)
+
+    # preprocess
     win.setEditRectangleMode()
+
     win.show()
     win.raise_()
     sys.exit(app.exec_())

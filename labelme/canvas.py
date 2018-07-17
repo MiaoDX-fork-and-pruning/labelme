@@ -384,6 +384,13 @@ class Canvas(QtWidgets.QWidget):
         self.offsets = QtCore.QPoint(x1, y1), QtCore.QPoint(x2, y2)
 
     def boundedMoveVertex(self, pos):
+
+        index, shape = self.hVertex, self.hShape
+        if not shape.editable and not self.confirmMessage("Move shape vertex", "Are you really want to move the bounding box vertex and change the property of the whole shape to be editable?"):
+            return
+
+        shape.editable = True
+
         if self.createMode == 'polygon':
             self.boundedMoveVertex_poly(pos)
         elif self.createMode == 'rectangle':
@@ -420,6 +427,11 @@ class Canvas(QtWidgets.QWidget):
         shape.moveVertexBy(lindex, lshift)
 
     def boundedMoveShape(self, shape, pos):
+
+        if not shape.editable and not self.confirmMessage("Move shape vertex", "Are you really want to move the bounding box vertex and change the property of the whole shape to be editable?"):
+            return
+        shape.editable = True
+
         if self.outOfPixmap(pos):
             return False  # No need to move
         o1 = pos + self.offsets[0]
@@ -706,3 +718,14 @@ class Canvas(QtWidgets.QWidget):
         self.pixmap = None
         self.shapesBackups = []
         self.update()
+
+    # copy from app.py
+    def confirmMessage(self, title, message):
+        rtn = QtWidgets.QMessageBox.information(self,
+                                                title,
+                                                message,
+                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if rtn == QtWidgets.QMessageBox.Yes:
+            return True
+        else:
+            return False
