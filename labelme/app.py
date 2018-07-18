@@ -147,18 +147,17 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
         self.targetDirPath = '' # the target path of images
         self.defaultSaveDir = None
-        save_dir = self._config['save_dir']
+        self.save_labelme_dir = save_labelme_dir = self._config['save_labelme_dir']
         self.lastOpenDir = None
         self.sort_type_and_flag_backup = None
         self.image_path_stats_dict_list_backup = dict()
         self.image_path_list_last = list()
+        self.image_path_labelme_file_dict = dict()
 
-        if save_dir is not None and os.path.exists(save_dir):
-            self.defaultSaveDir = save_dir
+        if save_labelme_dir is not None and os.path.exists(save_labelme_dir):
             self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
-                                         (__appname__, self.defaultSaveDir))
+                                         (__appname__, save_labelme_dir))
             self.statusBar().show()
-
 
         self.labelList.itemActivated.connect(self.labelSelectionChanged)
         self.labelList.itemSelectionChanged.connect(self.labelSelectionChanged)
@@ -539,11 +538,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         image_dir = self._config['image_dir']
         if image_dir is not None:
             self.openDirDialog(dirpath=image_dir, _value=True)
-        elif image_dir is None and save_dir is not None:
-            self.openDirDialog(dirpath=save_dir, _value=True)
-        # self.firstStart = True
-        # if self.firstStart:
-        #    QWhatsThis.enterWhatsThisMode()
+        elif image_dir is None and save_labelme_dir is not None:
+            self.openDirDialog(dirpath=save_labelme_dir, _value=True)
 
     # Support Functions
 
@@ -593,8 +589,6 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 self.canvas.setShapeVisible(shape, False)
                 self.togglePolygons_type(value=False, shape_chosen=shape)
 
-        self.setDirty()
-
     def sort_type_flag_item_changed(self):
 
         sort_type_and_flag = self.load_current_flag(self.sort_file_widget)
@@ -621,10 +615,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
     def setDirty(self):
         if self._config['auto_save']:
-            # label_file = os.path.splitext(self.imagePath)[0] + '.json'
-            basename = os.path.basename(
-                os.path.splitext(self.imagePath)[0])
-            label_file = os.path.join(self.defaultSaveDir, basename + '.json')
+            label_file = self.assign_labelfile_with_imagepath(self.imagePath)
             self.saveLabels(label_file)
             return
         self.dirty = True
@@ -1056,9 +1047,26 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             if shape == shape_chosen:
                 item.setCheckState(Qt.Checked if value else Qt.Unchecked)
 
+
+    def assign_labelfile_with_imagepath(self, filename, _force=True):
+        if LabelFile.isLabelFile(filename):
+            label_file = filename
+        elif filename in self.image_path_labelme_file_dict: # use labelme file
+            label_file = self.image_path_labelme_file_dict[filename]
+        elif self.defaultSaveDir is not None:
+            basename = os.path.basename(
+                os.path.splitext(filename)[0])
+            label_file = os.path.join(self.defaultSaveDir, basename + '.json')
+        elif _force:
+            label_file = os.path.splitext(filename)[0] + '.json'
+        else:
+            label_file = None
+        return label_file
+
     def loadFile(self, filename=None):
         """Load the specified file, or the last opened file if None."""
         # changing fileListWidget loads file
+
         if (filename in self.imageList and
                 self.fileListWidget.currentRow() !=
                 self.imageList.index(filename)):
@@ -1076,12 +1084,9 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             return False
         # assumes same name, but json extension
         self.status("Loading %s..." % os.path.basename(str(filename)))
-        label_file = os.path.splitext(filename)[0] + '.json'
 
-        if self.defaultSaveDir is not None:
-            basename = os.path.basename(
-                os.path.splitext(filename)[0])
-            label_file = os.path.join(self.defaultSaveDir, basename + '.json')
+        label_file = self.assign_labelfile_with_imagepath(filename)
+
 
         if QtCore.QFile.exists(label_file) and \
                 LabelFile.isLabelFile(label_file):
@@ -1296,15 +1301,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             if self.output:
                 self._saveFile(self.output)
                 return
-
-            if self.defaultSaveDir is not None and len(self.defaultSaveDir):
-                if self.filename:
-                    file_basename = os.path.basename(self.filename)
-                    saved_filename_no_ext = os.path.splitext(file_basename)[0]+'.json'
-                    saved_path = os.path.join(self.defaultSaveDir, saved_filename_no_ext)
-                    self._saveFile(saved_path)
-            else:
-                self._saveFile(self.saveFileDialog())
+            label_file = self.assign_labelfile_with_imagepath(self.filename, _force=False)
+            if label_file is not None:
+                self._saveFile(label_file)
+                return
+            self._saveFile(self.saveFileDialog())
 
     def saveFileAs(self, _value=False):
         assert not self.image.isNull(), "cannot save empty image"
@@ -1380,9 +1381,8 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             self, title, '<p><b>%s</b></p>%s' % (title, message))
 
     def warnMessage(self, title, message):
-        return QtWidgets.QMessageBox.warning(
-            self, title, '<p><b>%s</b></p>%s' % (title, message))
-
+        return QtWidgets.QMessageBox.warning(self, title, '<p><b>%s</b></p>%s' % (title, message))
+        #pass
     def confirmMessage(self, title, message):
         rtn = QtWidgets.QMessageBox.information(self,
                                                 title,
@@ -1505,7 +1505,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
     def change_image_path_list_order(self, order_by_type='SHOW_TYPE_TP'):
 
-        d_s = sorted(self.image_path_stats_dict_list_backup.items(), key=lambda x: self._custom_key(x, key_s=order_by_type))
+        d_s = sorted(self.image_path_stats_dict_list_backup.items(), key=lambda x: self._custom_key(x, key_s=order_by_type), reverse=True) # okay, the bigger the earlier
         # print(d_s)
         image_path_list = [x[0] for x in d_s]
         # print(image_path_list)
@@ -1535,6 +1535,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.fileListWidget.clear()
         self.image_path_stats_dict_list_backup = dict()
         self.image_path_list_last = list()
+        self.image_path_labelme_file_dict = dict()
 
         allImagesInDir = self.scanAllImages(dirpath)
         allJsonLabelsInDir = self.scanAllJsonLables(dirpath)
@@ -1560,6 +1561,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                 imagePath = os.path.abspath(self.labelFile.imagePath)
                 allImagesInDir.append(str(imagePath))
                 self.image_path_list_last.append(imagePath)
+                self.image_path_labelme_file_dict[imagePath] = json_f
                 self.image_path_stats_dict_list_backup[imagePath] = self.labelFile.otherData.get('custom_data', dict()).get('area_stats', dict())
             self.resetState()
             self.defaultSaveDir = dirpath
@@ -1674,11 +1676,11 @@ def main():
     )
     parser.add_argument(
         '--image_dir',
-        help='The image directory, you can use with the save_dir, or use as one fresh start',
+        help='The image directory, you can use with the save_labelme_dir, or use as one fresh start',
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
-        '--save_dir',
+        '--save_labelme_dir',
         help='The saving directory of labelme files (use with iamge_dir) or you can just load with these files (no need to specify the image dir manually)',
         default=argparse.SUPPRESS,
     )
