@@ -1257,11 +1257,9 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if len(self.imageList) <= 0:
             return
 
-        filename = None
         if self.filename is None:
             filename = self.imageList[0]
         else:
-            filename = str(os.path.abspath(filename))
             currIndex = self.imageList.index(self.filename)
             if currIndex + 1 < len(self.imageList):
                 filename = self.imageList[currIndex + 1]
