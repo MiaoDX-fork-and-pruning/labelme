@@ -508,7 +508,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         # FIXME: QSettings.value can return None on PyQt4
         self.recentFiles = self.settings.value('recentFiles', []) or []
         size = self.settings.value('window/size', QtCore.QSize(600, 500))
-        position = self.settings.value('window/position', QtCore.QPoint(0, 0))
+        position = self.settings.value('window/position', QtCore.QPoint(0, 0).toPoint())
         self.resize(size)
         self.move(position)
         # or simply:
