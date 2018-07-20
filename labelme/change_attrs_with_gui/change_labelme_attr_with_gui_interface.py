@@ -10,7 +10,7 @@ class change_labelme_attr_with_gui_interface():
     def GUI(self, cur_id=0):
         pass
 
-def load_change_labelme_attr_with_gui(file_path=''):
+def load_change_labelme_attr_with_gui(file_path=None):
     if os.path.isfile(file_path):
         import importlib.util  # import file
         spec = importlib.util.spec_from_file_location("change_labelme_attr_with_gui", file_path)

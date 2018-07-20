@@ -47,7 +47,7 @@ QtCore.QPoint = QtCore.QPointF # we will use float points
 
 
 # Utility functions and classes.
-
+from urllib.request import urlopen
 
 class WindowMixin(object):
     def menu(self, title, actions=None):
@@ -895,7 +895,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         return flags
 
     def saveLabels(self, filename):
-        lf = LabelFile()
+        lf = LabelFile(_img_common_prefix_dir=self._config['img_common_prefix_dir'])
 
         def format_shape(s):
             return dict(label=str(s.label),
@@ -1078,20 +1078,21 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if filename is None:
             filename = self.settings.value('filename', '')
         filename = str(filename)
+        """
         if not QtCore.QFile.exists(filename):
             self.errorMessage(
                 'Error opening file', 'No such file: <b>%s</b>' % filename)
             return False
+        """
         # assumes same name, but json extension
         self.status("Loading %s..." % os.path.basename(str(filename)))
 
         label_file = self.assign_labelfile_with_imagepath(filename)
 
-
         if QtCore.QFile.exists(label_file) and \
                 LabelFile.isLabelFile(label_file):
             try:
-                self.labelFile = LabelFile(label_file)
+                self.labelFile = LabelFile(label_file, _img_common_prefix_dir=self._config['img_common_prefix_dir'])
                 # FIXME: PyQt4 installed via Anaconda fails to load JPEG
                 # and JSON encoded images.
                 # https://github.com/ContinuumIO/anaconda-issues/issues/131
@@ -1377,10 +1378,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
     def errorMessage(self, title, message):
         return QtWidgets.QMessageBox.critical(
             self, title, '<p><b>%s</b></p>%s' % (title, message))
-
+        pass
     def warnMessage(self, title, message):
         return QtWidgets.QMessageBox.warning(self, title, '<p><b>%s</b></p>%s' % (title, message))
-        #pass
+        pass
     def confirmMessage(self, title, message):
         rtn = QtWidgets.QMessageBox.information(self,
                                                 title,
@@ -1555,12 +1556,12 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         if len(allImagesInDir) == 0 and len(allJsonLabelsInDir) > 0:
             allImagesInDir = []
             for json_f in allJsonLabelsInDir:
-                self.loadFile(json_f)
-                imagePath = os.path.abspath(self.labelFile.imagePath)
+                labelFile = LabelFile(json_f, _load_data=False, _img_common_prefix_dir=self._config['img_common_prefix_dir'])
+                imagePath = labelFile.imagePath
                 allImagesInDir.append(str(imagePath))
                 self.image_path_list_last.append(imagePath)
                 self.image_path_labelme_file_dict[imagePath] = json_f
-                self.image_path_stats_dict_list_backup[imagePath] = self.labelFile.otherData.get('custom_data', dict()).get('area_stats', dict())
+                self.image_path_stats_dict_list_backup[imagePath] = labelFile.otherData.get('custom_data', dict()).get('area_stats', dict())
             self.resetState()
             self.defaultSaveDir = dirpath
             self.warnMessage('Use labels',
@@ -1603,11 +1604,14 @@ def inverted(color):
 
 def read(filename, default=None):
     try:
-        with open(filename, 'rb') as f:
-            return f.read()
+        if os.path.isfile(filename):
+            with open(filename, 'rb') as f:
+                return f.read()
+        elif filename.startswith('http'):
+            resp = urlopen(filename.replace('\\', '//'))
+            return resp.read()
     except Exception:
         return default
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1688,6 +1692,12 @@ def main():
         help='Whether the shape is editable or not by default',
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        '--img_common_prefix_dir',
+        help='The common prefix dir of these files',
+        default=argparse.SUPPRESS,
+    )
+
     args = parser.parse_args()
 
     if args.version:

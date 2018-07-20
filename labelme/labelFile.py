@@ -2,7 +2,8 @@ import base64
 import json
 import os.path
 import sys
-
+import imutils
+from urllib.request import urlopen
 
 PY2 = sys.version_info[0] == 2
 
@@ -15,7 +16,9 @@ class LabelFile(object):
 
     suffix = '.json'
 
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, _load_data=True, _img_common_prefix_dir=None):
+        self._load_data = _load_data
+        self._img_common_prefix_dir = _img_common_prefix_dir
         self.shapes = ()
         self.imagePath = None
         self.imageData = None
@@ -33,17 +36,26 @@ class LabelFile(object):
             'shapes',  # polygonal annotations
             'flags',   # image level flags
         ]
+        imageData = None
         try:
             with open(filename, 'rb' if PY2 else 'r') as f:
                 data = json.load(f)
-            if data['imageData'] is not None:
-                imageData = base64.b64decode(data['imageData'])
-            else:
-                # relative path from label file to relative path from cwd
-                imagePath = os.path.join(os.path.dirname(filename),
-                                         data['imagePath'])
-                with open(imagePath, 'rb') as f:
-                    imageData = f.read()
+
+            if self._load_data:
+                if data['imageData'] is not None:
+                    imageData = base64.b64decode(data['imageData'])
+                else:
+                    imagePath = data['imagePath']
+                    if self._img_common_prefix_dir is not None:
+                        imagePath = self._img_common_prefix_dir+'//'+imagePath
+
+                    if os.path.isfile(imagePath):
+                        with open(imagePath, 'rb') as f:
+                            imageData = f.read()
+                    elif imagePath.startswith('http'):
+                        resp = urlopen(imagePath.replace('\\', '//'))
+                        imageData = resp.read()
+
             flags = data.get('flags', dict())
             imagePath = data['imagePath']
             lineColor = data['lineColor']

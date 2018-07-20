@@ -8,9 +8,10 @@ sort_labels: true
 validate_label: null
 show_label_text_field: true
 sort_files_choices: ['SORT_BY_SHOW_TYPE_FN_AREA', 'SORT_BY_SHOW_TYPE_FN_max_AREA', 'SORT_BY_SHOW_TYPE_FP_AREA', 'SORT_BY_SHOW_TYPE_FP_max_AREA', 'reversed_sort']
+img_common_prefix_dir: null
 
 #change_labelme_attr_with_gui_file_path: "D:/ws/projects/hobot_program/label_tool/refine_gt/bridge/change_labelme_attr_with_gui_hobot_example.py"
-change_labelme_attr_with_gui_file_path: ""
+change_labelme_attr_with_gui_file_path: null
 # the image dir and save label dir, they can be used together, or only the save dir can be used
 image_dir: null
 save_labelme_dir: null
