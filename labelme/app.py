@@ -570,6 +570,10 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
 
         for flag, v in flags.items():
             if v == False:
+                try:
+                    flag = flag.split('|')[0]
+                except:
+                    pass
                 not_allowed_types.append(flag)
 
         for shape in self.canvas.shapes:
@@ -864,13 +868,23 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
         self.loadShapes(s)
 
     def loadFlags(self, flags):
-        if "verified" in flags:
-            flags.pop("verified") # do not show verified
+        tmp_flags = dict()
+        for key, flag in flags.items():
+            if key.find('|') != -1:
+                tmp_flags[key] = flag
+
+        flags = tmp_flags
         self.flag_widget.clear()
         for key, flag in flags.items():
             item = QtWidgets.QListWidgetItem(key)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked if flag else Qt.Unchecked)
+            try:
+                bcc = key.split('|')[-1]
+                # item.setBackground(QtGui.QColor(bcc))
+                item.setForeground(QtGui.QColor(bcc))
+            except:
+                pass
             self.flag_widget.addItem(item)
         self.flag_item_changed() # after load flag, show properly
 
