@@ -2,9 +2,10 @@ import os
 from labelme.labelFile import LabelFile
 
 class change_labelme_attr_with_gui_interface():
-    def __init__(self, label_file_hook):
+    def __init__(self, label_file_hook, label_type='person'):
         assert isinstance(label_file_hook, LabelFile)
         self.label_file_hook = label_file_hook # this is one hook <-> reference not copy
+        self.label_type = label_type
         print("This is change_labelme_attr_with_gui_interface")
 
     def GUI(self, cur_id=0):

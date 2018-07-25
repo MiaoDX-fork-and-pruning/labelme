@@ -779,7 +779,7 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
             from labelme.change_attrs_with_gui.change_labelme_attr_with_gui_interface import load_change_labelme_attr_with_gui
             change_labelme_attr_with_gui_class = load_change_labelme_attr_with_gui(self._config['change_labelme_attr_with_gui_file_path'])
             # WE WILL CHANGE THE CUSTOM DATA HERE
-            change_labelme_attr_with_gui = change_labelme_attr_with_gui_class(self.labelFile)
+            change_labelme_attr_with_gui = change_labelme_attr_with_gui_class(self.labelFile, label_type=self._config['label_type'])
             label_, label_id_ = text.split('~')
             change_labelme_attr_with_gui.GUI(int(label_id_)) # note the int
         except Exception as e:
@@ -1381,10 +1381,11 @@ class MainWindow(QtWidgets.QMainWindow, WindowMixin):
                              msg,
                              mb.Save | mb.Discard | mb.Cancel,
                              mb.Save)
-        if answer == mb.Discard:
-            return True
-        elif answer == mb.Save:
+        if answer == mb.Save:
             self.saveFile()
+            return True
+        elif answer == mb.Discard:
+            self.dirty = False
             return True
         else:  # answer == mb.Cancel
             return False
@@ -1688,6 +1689,11 @@ def main():
     parser.add_argument(
         '--change_labelme_attr_with_gui_file_path',
         help='The implement of change lablem attr with gui file',
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        '--label_type',
+        help='The labeltype we are dealing with',
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
